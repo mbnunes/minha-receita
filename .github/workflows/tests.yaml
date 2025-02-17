@@ -18,13 +18,10 @@ jobs:
       - uses: ikalnytskyi/action-setup-postgres@v4
         id: postgres
 
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Start MongoDB container
+      - name: Iniciar MongoDB no Linux
+        if: runner.os == 'Linux'
         run: |
-          docker run -d --name mongodb \
-            -p 27017:27017 \
+          docker run -d --name mongodb -p 27017:27017 \
             -e MONGO_INITDB_ROOT_USERNAME=minhareceita \
             -e MONGO_INITDB_ROOT_PASSWORD=minhareceita \
             -e MONGO_INITDB_DATABASE=minhareceita \
@@ -35,7 +32,7 @@ jobs:
       - name: Iniciar MongoDB no Windows
         if: runner.os == 'Windows'
         run: |
-          docker run -d --authenticationDatabase=admin --name mongodb -p 27017:27017 -e MONGO_INITDB_ROOT_USERNAME=minhareceita -e MONGO_INITDB_ROOT_PASSWORD=minhareceita -e MONGO_INITDB_DATABASE=minhareceita mongo:4
+          docker run -d --name mongodb -p 27017:27017 -e MONGO_INITDB_ROOT_USERNAME=minhareceita -e MONGO_INITDB_ROOT_PASSWORD=minhareceita -e MONGO_INITDB_DATABASE=minhareceita mongo:4
 
       - uses: actions/setup-go@v3
         with:
