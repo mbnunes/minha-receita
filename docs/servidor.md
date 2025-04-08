@@ -80,6 +80,22 @@ $ docker compose run --rm minha-receita create
 $ docker compose run --rm minha-receita transform -d /mnt/data/
 ```
 
+### Indexações Extras
+
+Para criar indexacoes extras, basta executar o comando seguindo o json da api, abaixo vamos criar os indices do uf do cnpj, o nome do socios e o codigo do cenae secundario.
+
+Sem Docker:
+
+```console
+$ minha-receita extra-indexes uf qsa.nome_socio cnaes_secundarios.codigo
+```
+
+Com Docker:
+
+```console
+$ docker compose extra-indexes uf qsa.nome_socio cnaes_secundarios.codigo
+```
+
 ### Questões de privacidade
 
 Assim como o [`socios-brasil`](https://github.com/turicas/socios-brasil#privacidade) removemos alguns dados para evitar exposição de dados sensíveis de pessoas físicas, bem como SPAM. A opção `--no-privacy` do comando `transform` remove essa precaução de privacidade.

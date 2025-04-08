@@ -221,7 +221,6 @@ func NewPostgreSQL(uri, schema string) (PostgreSQL, error) {
 }
 
 func (p *PostgreSQL) ExtraIndexes(idxs []string) error {
-	c := 0
 	for _, idx := range idxs {
 		v := idx
 		name := "json_"
@@ -248,8 +247,8 @@ func (p *PostgreSQL) ExtraIndexes(idxs []string) error {
 		if err != nil {
 			return fmt.Errorf("error to create indexe %s: %w", v, err)
 		}
-		c += 1
+
 	}
-	log.Output(1, fmt.Sprintf("%d Indexes successfully created in the table %s", c, p.CompanyTableName))
+	log.Output(1, fmt.Sprintf("%d Indexes successfully created in the table %s", len(idxs), p.CompanyTableName))
 	return nil
 }
