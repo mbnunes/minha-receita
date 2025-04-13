@@ -232,10 +232,12 @@ func (p *PostgreSQL) ExtraIndexes(idxs []string) error {
 			if strings.Contains(idx, "qsa") {
 				typeIdx = "qsa"
 				nameIdx = fmt.Sprintf("%sqsa_%s", name, v)
-			}
-			if strings.Contains(idx, "cnae") {
+			} else if strings.Contains(idx, "cnae") {
 				typeIdx = "cnaes_secundarios"
 				nameIdx = fmt.Sprintf("%scnaes_secundarios_%s", name, v)
+			} else {
+				log.Output(1, fmt.Sprintf("the index %s does not exist in json, so it cannot be created.", strings.Split(idx, ".")[0]))
+				return nil
 			}
 			valueIdx = v
 		}
