@@ -101,11 +101,11 @@ func TestMongoDB(t *testing.T) {
 		}
 	}
 	r := make(map[string]bool)
-	for _, index := range []string{"teste.index1"} {
+	for _, index := range []string{"index1"} {
 		r[index] = idxs[index]
 	}
 
 	if len(r) == 0 {
-		t.Errorf("indice nao encontrado, got %s", err) // mais uma ajuda
+		t.Errorf("index not found, got %s", err) // mais uma ajuda
 	}
 }

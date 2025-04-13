@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"os"
 	"testing"
 )
@@ -78,4 +79,22 @@ func TestPostgresDB(t *testing.T) {
 	if metadata2 != "forty-two" {
 		t.Errorf("expected foruty-two as the answer, got %s", metadata2)
 	}
+	err = pg.ExtraIndexes([]string{"index1"})
+	if err != nil {
+		t.Errorf("error creating new index, got %s", err) // preciso de ajuda ao melhorar a mensagem de erro.
+	}
+	query := `
+	    SELECT EXISTS (
+	        SELECT 1
+	        FROM pg_indexes
+	        WHERE schemaname = $1
+	          AND tablename = $2
+	          AND indexname ILIKE $3
+	    );
+	`
+	err = pg.pool.QueryRow(context.Background(), query, pg.schema, pg.CompanyTableName, "%index1%").Scan(nil)
+	if err != nil {
+		t.Errorf("index not found, got %s", err) // mais uma ajuda
+	}
+
 }
