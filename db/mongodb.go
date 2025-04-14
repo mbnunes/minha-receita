@@ -233,7 +233,7 @@ func (m *MongoDB) ExtraIndexes(idxs []string) error {
 		if len(e) > 1 {
 			v = strings.ReplaceAll(e[1], "_", "")
 			if e[0] == "qsa" {
-				v = fmt.Sprintf("%s.%s", e[0], v)
+				v = fmt.Sprintf("quadrosocietario.%s", v)
 			} else if e[0] == "cnaes_secundarios" {
 				v = fmt.Sprintf("cnaesecundarios.%s", e[1])
 			} else {
