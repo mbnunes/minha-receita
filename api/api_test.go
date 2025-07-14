@@ -28,6 +28,18 @@ func (mockDatabase) GetCompany(n string) (string, error) {
 	return string(b), nil
 }
 
+func (mockDatabase) Search(n string) (string, error) {
+	if n != "SP" {
+		return "", errors.New("Company not found")
+	}
+
+	b, err := os.ReadFile(filepath.Join("..", "testdata", "response.json"))
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
 func (mockDatabase) MetaRead(k string) (string, error) { return "42", nil }
 
 func TestCompanyHandler(t *testing.T) {
