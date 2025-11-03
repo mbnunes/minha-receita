@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"runtime"
-	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -25,21 +24,18 @@ var (
 		Help: "The duration of requests in milliseconds",
 	}, metricLabels)
 
+	errorCount = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "error_requests_total",
+		Help: "Total number of requests that returned an error per endpoint",
+	}, []string{"endpoint", "status_code"})
+
 	appCPU = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "app_cpu_percent",
 		Help: "CPU percent used by this application",
 	})
-	dbCPU = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "db_cpu_percent",
-		Help: "CPU percent used by database (PostgreSQL or MongoDB)",
-	})
 	appMem = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "app_memory_bytes",
 		Help: "Memory used by this application in bytes",
-	})
-	dbMem = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "db_memory_bytes",
-		Help: "Memory used by database in bytes",
 	})
 	procNetSent = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "app_network_sent_bytes",
@@ -51,9 +47,7 @@ var (
 	})
 )
 
-// ---- Funções utilitárias ----
-
-// Lê CPUPercent duas vezes com pequeno delay (necessário para valores corretos)
+// --- Função auxiliar ---
 func safeCPUPercent(p *process.Process) float64 {
 	if _, err := p.CPUPercent(); err == nil {
 		time.Sleep(200 * time.Millisecond)
@@ -64,7 +58,7 @@ func safeCPUPercent(p *process.Process) float64 {
 	return 0
 }
 
-// Coleta total de rede do sistema
+// --- Coleta de rede ---
 func collectNetworkMetrics() {
 	if counters, err := net.IOCounters(false); err == nil && len(counters) > 0 {
 		procNetSent.Set(float64(counters[0].BytesSent))
@@ -72,82 +66,60 @@ func collectNetworkMetrics() {
 	}
 }
 
-// ---- Métricas de requisições HTTP ----
+// --- Contagem de requisições e erros ---
 func registerMetric(e, m string, s int, i int64) {
-	c := fmt.Sprintf("%d", s)
-	requestCount.WithLabelValues(m, c, e).Inc()
-	requestDuration.WithLabelValues(m, c, e).Observe(float64(time.Now().UnixMilli() - i))
+	status := fmt.Sprintf("%d", s)
+	requestCount.WithLabelValues(m, status, e).Inc()
+	requestDuration.WithLabelValues(m, status, e).Observe(float64(time.Now().UnixMilli() - i))
+
+	if s >= 400 {
+		errorCount.WithLabelValues(e, status).Inc()
+	}
 }
 
-// ---- Coleta principal de métricas ----
+// --- Coleta de métricas do app ---
 func collectAppMetrics() {
 	collectNetworkMetrics()
 
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 
-	// Métricas do app
-	totalAppMem := float64(m.Alloc)
-	totalAppCPU := 0.0
+	totalMem := float64(m.Alloc)
+	totalCPU := 0.0
 
 	pid := int32(os.Getpid())
 	if proc, err := process.NewProcess(pid); err == nil {
-		totalAppCPU += safeCPUPercent(proc)
+		totalCPU = safeCPUPercent(proc)
 		if memInfo, err := proc.MemoryInfo(); err == nil {
-			totalAppMem += float64(memInfo.RSS)
+			totalMem += float64(memInfo.RSS)
 		}
 	}
 
-	// Métricas do banco de dados
-	totalDBMem := 0.0
-	totalDBCPU := 0.0
-
-	processes, _ := process.Processes()
-	for _, p := range processes {
-		name, _ := p.Name()
-		cmd, _ := p.Cmdline()
-		name = strings.ToLower(name)
-		cmd = strings.ToLower(cmd)
-
-		if strings.Contains(name, "postgres") || strings.Contains(cmd, "postgres") ||
-			strings.Contains(name, "mongod") || strings.Contains(cmd, "mongod") {
-
-			totalDBCPU += safeCPUPercent(p)
-			if memInfo, err := p.MemoryInfo(); err == nil {
-				totalDBMem += float64(memInfo.RSS)
-			}
-		}
-	}
-
-	appCPU.Set(totalAppCPU)
-	dbCPU.Set(totalDBCPU)
-	appMem.Set(totalAppMem)
-	dbMem.Set(totalDBMem)
-
+	appCPU.Set(totalCPU)
+	appMem.Set(totalMem)
 }
 
-// ---- Collector Prometheus customizado ----
+// --- Collector customizado ---
 type customCollector struct{}
 
 func (c *customCollector) Describe(ch chan<- *prometheus.Desc) {
 	requestCount.Describe(ch)
 	requestDuration.Describe(ch)
+	errorCount.Describe(ch)
 	appCPU.Describe(ch)
-	dbCPU.Describe(ch)
 	appMem.Describe(ch)
-	dbMem.Describe(ch)
 	procNetSent.Describe(ch)
 	procNetRecv.Describe(ch)
 }
 
 func (c *customCollector) Collect(ch chan<- prometheus.Metric) {
 	collectAppMetrics()
+
 	requestCount.Collect(ch)
 	requestDuration.Collect(ch)
+	errorCount.Collect(ch)
 	appCPU.Collect(ch)
-	dbCPU.Collect(ch)
 	appMem.Collect(ch)
-	dbMem.Collect(ch)
 	procNetSent.Collect(ch)
 	procNetRecv.Collect(ch)
 }
