@@ -8,21 +8,23 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/shirou/gopsutil/v3/net"
 	"github.com/shirou/gopsutil/v3/process"
 )
 
 var (
 	metricLabels = []string{"method", "status_code", "endpoint"}
+
 	requestCount = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "total_requests",
 		Help: "The total number of requests served",
 	}, metricLabels)
+
 	requestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name: "request_duration",
 		Help: "The duration of requests in milliseconds",
 	}, metricLabels)
 
-	// Métricas separadas de CPU e memória
 	appCPU = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "app_cpu_percent",
 		Help: "CPU percent used by this application",
@@ -41,23 +43,46 @@ var (
 	})
 	procNetSent = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "app_network_sent_bytes",
-		Help: "Network bytes sent by this application",
+		Help: "Network bytes sent (system-wide, not per process)",
 	})
 	procNetRecv = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "app_network_recv_bytes",
-		Help: "Network bytes received by this application",
+		Help: "Network bytes received (system-wide, not per process)",
 	})
 )
 
-// Contador e duração das requisições HTTP
+// ---- Funções utilitárias ----
+
+// Lê CPUPercent duas vezes com pequeno delay (necessário para valores corretos)
+func safeCPUPercent(p *process.Process) float64 {
+	if _, err := p.CPUPercent(); err == nil {
+		time.Sleep(200 * time.Millisecond)
+		if v, err := p.CPUPercent(); err == nil {
+			return v
+		}
+	}
+	return 0
+}
+
+// Coleta total de rede do sistema
+func collectNetworkMetrics() {
+	if counters, err := net.IOCounters(false); err == nil && len(counters) > 0 {
+		procNetSent.Set(float64(counters[0].BytesSent))
+		procNetRecv.Set(float64(counters[0].BytesRecv))
+	}
+}
+
+// ---- Métricas de requisições HTTP ----
 func registerMetric(e, m string, s int, i int64) {
 	c := fmt.Sprintf("%d", s)
 	requestCount.WithLabelValues(m, c, e).Inc()
 	requestDuration.WithLabelValues(m, c, e).Observe(float64(time.Now().UnixMilli() - i))
 }
 
-// --- Coleta sob demanda ---
+// ---- Coleta principal de métricas ----
 func collectAppMetrics() {
+	collectNetworkMetrics()
+
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 
@@ -67,21 +92,16 @@ func collectAppMetrics() {
 
 	pid := int32(os.Getpid())
 	if proc, err := process.NewProcess(pid); err == nil {
-		if cpuPercent, err := proc.CPUPercent(); err == nil {
-			totalAppCPU += cpuPercent
-		}
+		totalAppCPU += safeCPUPercent(proc)
 		if memInfo, err := proc.MemoryInfo(); err == nil {
 			totalAppMem += float64(memInfo.RSS)
 		}
-		if ioCounters, err := proc.IOCounters(); err == nil {
-			procNetSent.Set(float64(ioCounters.WriteBytes))
-			procNetRecv.Set(float64(ioCounters.ReadBytes))
-		}
 	}
 
-	// Métricas do banco
+	// Métricas do banco de dados
 	totalDBMem := 0.0
 	totalDBCPU := 0.0
+
 	processes, _ := process.Processes()
 	for _, p := range processes {
 		name, _ := p.Name()
@@ -92,9 +112,7 @@ func collectAppMetrics() {
 		if strings.Contains(name, "postgres") || strings.Contains(cmd, "postgres") ||
 			strings.Contains(name, "mongod") || strings.Contains(cmd, "mongod") {
 
-			if cpuPercent, err := p.CPUPercent(); err == nil {
-				totalDBCPU += cpuPercent
-			}
+			totalDBCPU += safeCPUPercent(p)
 			if memInfo, err := p.MemoryInfo(); err == nil {
 				totalDBMem += float64(memInfo.RSS)
 			}
@@ -108,7 +126,7 @@ func collectAppMetrics() {
 
 }
 
-// --- Implementa o Collector customizado ---
+// ---- Collector Prometheus customizado ----
 type customCollector struct{}
 
 func (c *customCollector) Describe(ch chan<- *prometheus.Desc) {
